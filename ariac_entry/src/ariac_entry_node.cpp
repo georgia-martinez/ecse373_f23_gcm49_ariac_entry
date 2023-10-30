@@ -53,16 +53,8 @@ bool startCompetition(ros::NodeHandle &n) {
 		return false;
 	}	
 
-	ROS_INFO("Competition service called successfully: %s", begin_comp.response.message.c_str());
+	ROS_INFO("Competition service called successfully");
 	return true;
-}
-
-void orderCallback(const osrf_gear::Order msg) {
-	orders.push_back(msg);
-}
-
-void cameraCallback(int index, const osrf_gear::LogicalCameraImage::ConstPtr& image) {
-	camera_images[index] = image;
 }
 
 int getBinNum(std::string type) {
@@ -85,19 +77,17 @@ int getBinNum(std::string type) {
         int binNum;
         sscanf(binName,"bin%d",&binNum);
 		
-		ROS_WARN("%s is in bin %d", type.c_str(), binNum);
-		
 		return binNum;
 	}
 
 	return -1;
 }
 
-void moveArm(osrf_gear::Model model) {
+void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	geometry_msgs::TransformStamped tfStamped;
 	
 	try {
-		tfStamped = tfBuffer.lookupTransform("arm1_base_link", "logical_camera_bin4_frame", ros::Time(0.0), ros::Duration(1.0));
+		tfStamped = tfBuffer.lookupTransform("arm1_base_link", sourceFrame, ros::Time(0.0), ros::Duration(1.0));
 		ROS_INFO("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
 		
 	} catch (tf2::TransformException &ex) {
@@ -122,11 +112,7 @@ void moveArm(osrf_gear::Model model) {
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
 }
 
-void processOrders() {
-	if (orders.empty()) {
-		return;
-	}
-
+void processOrder() {
 	osrf_gear::Order order = orders.at(0);
 
 	for(osrf_gear::Shipment shipment: order.shipments) {
@@ -140,9 +126,10 @@ void processOrders() {
 			for (osrf_gear::Model model : camera_images[bin-1]->models) {
 				if (strstr(product.type.c_str(), model.type.c_str())) {
 					geometry_msgs::Point position = model.pose.position;
-			ROS_WARN("%s in bin %d at position (%f, %f, %f)", product.type.c_str(), bin, position.x, position.y, position.z);
+			ROS_WARN("%s [bin=%d, position=(%f, %f, %f)]", product.type.c_str(), bin, position.x, position.y, position.z);
 				
-					moveArm(model);
+				    std::string sourceFrame = "logical_camera_bin"+std::to_string(bin)+"_frame";
+					moveArm(model, sourceFrame);
 					break;
 				}
 			}
@@ -152,9 +139,19 @@ void processOrders() {
 	orders.erase(orders.begin());
 }
 
+void orderCallback(const osrf_gear::Order msg) {
+	orders.push_back(msg);
+	ROS_INFO("Order %s received", msg.order_id.c_str());
+	processOrder();
+}
+
+void cameraCallback(int index, const osrf_gear::LogicalCameraImage::ConstPtr& image) {
+	camera_images[index] = image;
+}
+
 int main(int argc, char **argv) {
 
-	ros::init(argc, argv, "ariac_entry_node");
+	ros::init(argc, argv, "ariac_entry");
 	ros::NodeHandle n;
 
     tf2_ros::TransformListener tfListener(tfBuffer);
@@ -163,19 +160,12 @@ int main(int argc, char **argv) {
 	locationClient = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
 	
 	// Subscribe to orders
-	ros::Subscriber order_sub = n.subscribe("/ariac/orders", 1000, orderCallback);
+	ros::Subscriber sub = n.subscribe<osrf_gear::Order>("/ariac/orders", 1000, orderCallback);
 
 	// Subscribe to camera topics	
 	std::vector<ros::Subscriber> camera_subs;
 	
 	for(int i = 0; i < 10; i++) {
-		// camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000, [=](const auto& msg) { cameraCallback(i, msg); }));
-		
-		//camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000, [=](const boost::shared_ptr<const osrf_gear::LogicalCameraImage<std::allocator<void>>> msg) {
-			//cameraCallback(i, msg);
-			//}
-		//));
-		
 		camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000,
             boost::bind(cameraCallback, i, _1)));
 	}
@@ -185,10 +175,6 @@ int main(int argc, char **argv) {
 	
 	if(!startCompetition(n)) {
 		return 1;
-	}
-
-	while(ros::ok()) {
-		processOrders();
 	}
 
 	ros::spin();
