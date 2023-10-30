@@ -1,13 +1,19 @@
 #include "ros/ros.h"
 #include "std_msgs/String.h"
+#include <string>
 
 #include "std_srvs/Trigger.h"
 #include "std_srvs/SetBool.h"
 #include "osrf_gear/Order.h"
+#include "osrf_gear/Shipment.h"
+#include "osrf_gear/GetMaterialLocations.h"
+#include "osrf_gear/LogicalCameraImage.h"
+#include "osrf_gear/StorageUnit.h"
 
 #include "tf2_ros/tranform_listener.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 #include "geometry_msgs/TransformStamped.h"
+#include "geometry_msgs/Pose.h"
 
 std::vector<osrf_gear::Order> orders;
 osrf_gear::LogicalCameraImage camera_images[10];

@@ -7,7 +7,7 @@ This package relies on the ARIAC 2019 environment which you can read more about 
 Clone the following repositories and put them in their own separate workspaces:
 
 <https://github.com/cwru-eecs-373/cwru_ariac_2019.git>
-
+<br>
 <https://github.com/cwru-eecs-373/ecse_373_ariac.git>
 
 ## Launching
