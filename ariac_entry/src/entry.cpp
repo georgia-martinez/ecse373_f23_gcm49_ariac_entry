@@ -87,10 +87,6 @@ int getBinNum(std::string type) {
 }
 
 void moveArm(osrf_gear::Model model) {
-	geometry_msgs::Point position = model.pose.position;
-	
-	ROS_WARN("%s at position (%f, %f, %f)", model.type.c_str(), position.x, position.y, position.z);
-
 	geometry_msgs::TransformStamped tfStamped;
 	
 	try {
@@ -137,8 +133,12 @@ void processOrders() {
 			for (osrf_gear::Model model : camera_data[bin-1]->models) {
 				if (strstr(product.type.c_str(), model.type.c_str()) {
 					moveArm(model);
+					break;
 				}
 			}
+			
+			geometry_msgs::Point position = model.pose.position;
+			ROS_WARN("%s in bin %d at position (%f, %f, %f)", product.type.c_str(), bin, position.x, position.y, position.z);
 		}
 	}
 
