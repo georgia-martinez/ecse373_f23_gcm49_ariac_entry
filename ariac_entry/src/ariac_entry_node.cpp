@@ -76,7 +76,7 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	
 	try {
 		tfStamped = tfBuffer.lookupTransform("arm1_base_link", sourceFrame, ros::Time(0.0), ros::Duration(1.0));
-		ROS_INFO("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
+		ROS_DEBUG("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
 		
 	} catch (tf2::TransformException &ex) {
 		ROS_ERROR("%s", ex.what());
@@ -98,6 +98,9 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	goal_pose.pose.orientation.z = 0.0;
 	
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
+	
+	geometry_msgs::Point position = goal_pose.pose.position;
+	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
 }
 
 void processOrder() {
@@ -119,9 +122,12 @@ void processOrder() {
 				for (osrf_gear::Model model : camera_images[i]->models) {
 					if (strstr(product.type.c_str(), model.type.c_str())) {
 						geometry_msgs::Point position = model.pose.position;
-						ROS_WARN("%s [bin=%s, position=(%f, %f, %f)]", product.type.c_str(), bin.c_str(), position.x, position.y, position.z);
 						
-					    std::string sourceFrame = "logical_camera_"+bin+"_frame";						
+						ROS_WARN("Model type: %s", product.type.c_str());
+						ROS_WARN("Bin: %s", bin.c_str());
+						ROS_WARN("Position: x=%f, y=%f, z=%f (relative to camera)", position.x, position.y, position.z); 
+						
+						std::string sourceFrame = "logical_camera_"+bin+"_frame";				
 						moveArm(model, sourceFrame);
 						
 						break;
