@@ -58,7 +58,7 @@ void cameraCallback(int index, const osrf_gear::LogicalCameraImage image) {
 	camera_images[index] = image;
 }
 
-std::string getBinName(std::string type) {
+int getBinNum(std::string type) {
 
 	// Use the material location service 
 	osrf_gear::GetMaterialLocations locationService;
@@ -68,13 +68,81 @@ std::string getBinName(std::string type) {
 	
 	// Log the name of the first storage unit containing the given material type
 	for (osrf_gear::StorageUnit unit : locationService.response.storage_units){
-		if(unit.unit_id != "bin"){
-			ROS_INFO("%s in storage unit %s", type.c_str(), unit.unit_id.c_str());
-			return unit.unit_id;
+		if (unit.unit_id == "bin") {
+			continue;
+		}
+		
+       	// Get number from string
+        const char *binName = unit.unit_id.c_str();
+		
+        int binNum;
+        sscanf(binName,"bin%d",&binNum);
+		
+		ROS_WARN("%s is in bin %d", type.c_str(), binNum);
+		
+		return binNum;
+	}
+
+	return -1;
+}
+
+void moveArm(osrf_gear::Model model) {
+	geometry_msgs::Point position = model.pose.position;
+	
+	ROS_WARN("%s at position (%f, %f, %f)", model.type.c_str(), position.x, position.y, position.z);
+
+	geometry_msgs::TransformStamped tfStamped;
+	
+	try {
+		tfStamped = tfBuffer.lookupTransform("arm1_base_link", "logical_camera_bin4_frame", ros::Time(0.0), ros::Duration(1.0));
+		ROS_INFO("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
+		
+	} catch (tf2::TransformException &ex) {
+		ROS_ERROR("%s", ex.what());
+	}
+	
+	// Create variables
+	geometry_msgs::PoseStamped part_pose, goal_pose;
+
+	// Copy pose from the logical camera.
+	part_pose.pose = model.pose;
+	tf2::doTransform(part_pose, goal_pose, tfStamped);
+	
+	goal_pose.pose.position.z += 0.10; // 10 cm above the part
+	
+	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
+	goal_pose.pose.orientation.w = 0.707;
+	goal_pose.pose.orientation.x = 0.0;
+	goal_pose.pose.orientation.y = 0.707;
+	goal_pose.pose.orientation.z = 0.0;
+	
+	tf2::doTransform(part_pose, goal_pose, tfStamped);
+}
+
+void processOrders() {
+	if (orders.isEmpty()) {
+		continue;
+	}
+
+	osrf_gear::Order order = orders.at(0);
+
+	for(osrf_gear::Shipment shipment: order.shipments) {
+		for(osrf_gear::Product product:shipment.products) {			
+			int bin = getBinNum(product.type);
+			
+			if (bin == -1) {
+				continue;
+			}
+			
+			for (osrf_gear::Model model : camera_data[bin-1]->models) {
+				if (strstr(product.type.c_str(), model.type.c_str()) {
+					moveArm(model);
+				}
+			}
 		}
 	}
 
-	return "";
+	orders.erase(orders.begin());
 }
 
 int main(int argc, char **argv) {
@@ -102,27 +170,7 @@ int main(int argc, char **argv) {
 	startCompetition(n);
 
 	while(ros::ok()) {
-		if (orders.isEmpty()) {
-			continue;
-		}
-		
-		osrf_gear::Order order = orders.at(0);
-		
-		for(osrf_gear::Shipment shipment: order.shipments) {
-			for(osrf_gear::Product product:shipment.products) {			
-				std::string bin = getBinName(product.type);
-				
-				if (bin.empty()) {
-					continue;
-				}
-				
-				geometry_msgs::Point position = image_map[bin].models[0].pose.position;
-				ROS_WARN("%s in bin %d at position (%.2f, %.2f, %.2f)", product.type.c_str(), bin, position.x, position.y, position.z);
-				
-			}
-		}
-		
-		orders.erase(orders.begin());
+		processOrders();
 	}
 
 	ros::spin();
