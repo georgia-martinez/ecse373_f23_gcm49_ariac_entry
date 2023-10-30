@@ -57,30 +57,18 @@ bool startCompetition(ros::NodeHandle &n) {
 	return true;
 }
 
-int getBinNum(std::string type) {
+std::string getBinName(std::string type) {
 
-	// Use the material location service 
 	osrf_gear::GetMaterialLocations locationService;
 	locationService.request.material_type = type;
 	
 	locationClient.call(locationService);
 	
-	// Log the name of the first storage unit containing the given material type
-	for (osrf_gear::StorageUnit unit : locationService.response.storage_units){
-		if (unit.unit_id == "bin") {
-			continue;
-		}
-		
-       	// Get number from string
-        const char *binName = unit.unit_id.c_str();
-		
-        int binNum;
-        sscanf(binName,"bin%d",&binNum);
-		
-		return binNum;
+	for (osrf_gear::StorageUnit unit : locationService.response.storage_units){				
+		return unit.unit_id;
 	}
 
-	return -1;
+	return "NONE";
 }
 
 void moveArm(osrf_gear::Model model, std::string sourceFrame) {
@@ -117,22 +105,30 @@ void processOrder() {
 
 	for(osrf_gear::Shipment shipment: order.shipments) {
 		for(osrf_gear::Product product:shipment.products) {			
-			int bin = getBinNum(product.type);
+			std::string bin = getBinName(product.type);
 			
-			if (bin == -1) {
+			if (bin == "NONE") {
 				continue;
 			}
 			
-			for (osrf_gear::Model model : camera_images[bin-1]->models) {
-				if (strstr(product.type.c_str(), model.type.c_str())) {
-					geometry_msgs::Point position = model.pose.position;
-			ROS_WARN("%s [bin=%d, position=(%f, %f, %f)]", product.type.c_str(), bin, position.x, position.y, position.z);
-				
-				    std::string sourceFrame = "logical_camera_bin"+std::to_string(bin)+"_frame";
-					moveArm(model, sourceFrame);
-					break;
+			for(int i = 0; i < 10; i++) {
+		    	if(camera_topics[i].find(bin) == std::string::npos) {
+					continue;
 				}
+				
+				for (osrf_gear::Model model : camera_images[i]->models) {
+					if (strstr(product.type.c_str(), model.type.c_str())) {
+						geometry_msgs::Point position = model.pose.position;
+						ROS_WARN("%s [bin=%s, position=(%f, %f, %f)]", product.type.c_str(), bin.c_str(), position.x, position.y, position.z);
+						
+						std::string sourceFrame = "logical_camera_"+bin+"_frame";				
+						moveArm(model, sourceFrame);
+						
+						break;
+					}
+				}	
 			}
+			
 		}
 	}
 
@@ -141,7 +137,7 @@ void processOrder() {
 
 void orderCallback(const osrf_gear::Order msg) {
 	orders.push_back(msg);
-	ROS_INFO("Order %s received", msg.order_id.c_str());
+	ROS_INFO("Received: %s", msg.order_id.c_str());
 	processOrder();
 }
 

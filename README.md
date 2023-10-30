@@ -43,6 +43,8 @@ source devel/setup.bash
 
 `roslaunch ariac_entry entry.launch`
 
+When the gazebo window opens, hit the play button at the bottom of the screen to start the simulation.
+
 ## About the package
 
 The purpose of this package is to process orders in the ARIAC simulation by:
