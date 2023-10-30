@@ -112,7 +112,7 @@ void processOrder() {
 			}
 			
 			for(int i = 0; i < 10; i++) {
-		    	if(camera_topics[i].find(bin) == std::string::npos) {
+				if(camera_topics[i].find(bin) == std::string::npos) {
 					continue;
 				}
 				
@@ -121,7 +121,7 @@ void processOrder() {
 						geometry_msgs::Point position = model.pose.position;
 						ROS_WARN("%s [bin=%s, position=(%f, %f, %f)]", product.type.c_str(), bin.c_str(), position.x, position.y, position.z);
 						
-						std::string sourceFrame = "logical_camera_"+bin+"_frame";				
+					    std::string sourceFrame = "logical_camera_"+bin+"_frame";						
 						moveArm(model, sourceFrame);
 						
 						break;
@@ -162,8 +162,7 @@ int main(int argc, char **argv) {
 	std::vector<ros::Subscriber> camera_subs;
 	
 	for(int i = 0; i < 10; i++) {
-		camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000,
-            boost::bind(cameraCallback, i, _1)));
+		camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000, boost::bind(cameraCallback, i, _1)));
 	}
 
 	// Start the competition
