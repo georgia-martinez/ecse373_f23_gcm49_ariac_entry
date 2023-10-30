@@ -10,13 +10,13 @@
 #include "osrf_gear/LogicalCameraImage.h"
 #include "osrf_gear/StorageUnit.h"
 
-#include "tf2_ros/tranform_listener.h"
+#include "tf2_ros/transform_listener.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 #include "geometry_msgs/TransformStamped.h"
 #include "geometry_msgs/Pose.h"
 
 std::vector<osrf_gear::Order> orders;
-osrf_gear::LogicalCameraImage camera_images[10];
+osrf_gear::LogicalCameraImage::ConstPtr camera_images[10];
 ros::ServiceClient locationClient; 
 tf2_ros::Buffer tfBuffer;
 
@@ -33,34 +33,35 @@ std::string camera_topics[] = {
 	"/ariac/quality_control_sensor_2"
 };
 
-void startCompetition(ros::NodeHandle &node) {
+bool startCompetition(ros::NodeHandle &n) {
 	ROS_INFO("Waiting for the competition to start...");
 	ros::ServiceClient begin_client = n.serviceClient<std_srvs::Trigger>("/ariac/start_competition");
 	begin_client.waitForExistence();
 
 	std_srvs::Trigger begin_comp;
 
-	int service_call_succeeded; // Capture service call success
+	int call_succeeded; // Capture service call success
 	call_succeeded = begin_client.call(begin_comp); // Call the service
 
 	if (!call_succeeded) {
 		ROS_ERROR("Competition service call failed");
-		return 1;
+		return false;
 	}
 	
 	if (!begin_comp.response.success) {
 		ROS_ERROR("Competition service returned failure: %s", begin_comp.response.message.c_str());
-		return 1;
+		return false;
 	}	
 
 	ROS_INFO("Competition service called successfully: %s", begin_comp.response.message.c_str());
+	return true;
 }
 
 void orderCallback(const osrf_gear::Order msg) {
 	orders.push_back(msg);
 }
 
-void cameraCallback(int index, const osrf_gear::LogicalCameraImage image) {
+void cameraCallback(int index, const osrf_gear::LogicalCameraImage::ConstPtr& image) {
 	camera_images[index] = image;
 }
 
@@ -122,8 +123,8 @@ void moveArm(osrf_gear::Model model) {
 }
 
 void processOrders() {
-	if (orders.isEmpty()) {
-		continue;
+	if (orders.empty()) {
+		return;
 	}
 
 	osrf_gear::Order order = orders.at(0);
@@ -136,15 +137,15 @@ void processOrders() {
 				continue;
 			}
 			
-			for (osrf_gear::Model model : camera_data[bin-1]->models) {
-				if (strstr(product.type.c_str(), model.type.c_str()) {
+			for (osrf_gear::Model model : camera_images[bin-1]->models) {
+				if (strstr(product.type.c_str(), model.type.c_str())) {
+					geometry_msgs::Point position = model.pose.position;
+			ROS_WARN("%s in bin %d at position (%f, %f, %f)", product.type.c_str(), bin, position.x, position.y, position.z);
+				
 					moveArm(model);
 					break;
 				}
 			}
-			
-			geometry_msgs::Point position = model.pose.position;
-			ROS_WARN("%s in bin %d at position (%f, %f, %f)", product.type.c_str(), bin, position.x, position.y, position.z);
 		}
 	}
 
@@ -153,13 +154,13 @@ void processOrders() {
 
 int main(int argc, char **argv) {
 
-	ros::init(argc, argv, "ariac_entry");
+	ros::init(argc, argv, "ariac_entry_node");
 	ros::NodeHandle n;
 
     tf2_ros::TransformListener tfListener(tfBuffer);
 	
 	// Define client for getting material locations
-	location_client = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
+	locationClient = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
 	
 	// Subscribe to orders
 	ros::Subscriber order_sub = n.subscribe("/ariac/orders", 1000, orderCallback);
@@ -167,13 +168,24 @@ int main(int argc, char **argv) {
 	// Subscribe to camera topics	
 	std::vector<ros::Subscriber> camera_subs;
 	
-	for(int i = 0; i < camera_topics.size(); i++) {
-		camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000, [=](const auto& msg) { cameraCallback(i, msg); }));
+	for(int i = 0; i < 10; i++) {
+		// camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000, [=](const auto& msg) { cameraCallback(i, msg); }));
+		
+		//camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000, [=](const boost::shared_ptr<const osrf_gear::LogicalCameraImage<std::allocator<void>>> msg) {
+			//cameraCallback(i, msg);
+			//}
+		//));
+		
+		camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000,
+            boost::bind(cameraCallback, i, _1)));
 	}
 
 	// Start the competition
 	ros::Rate loop_rate(10);
-	startCompetition(n);
+	
+	if(!startCompetition(n)) {
+		return 1;
+	}
 
 	while(ros::ok()) {
 		processOrders();

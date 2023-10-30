@@ -1,6 +1,9 @@
 <launch>
+	<!--
 	<include file="$(find ecse_373_ariac)/launch/ecse_373_ariac.launch">
 		<arg name="python" value="false"/>
 	</include>
-	<node name="ariac_entry" pkg="ariac_entry" type="ariac_entry" output="screen"/>
+	-->
+	
+	<node name="ariac_entry_node" pkg="ariac_entry" type="ariac_entry_node" output="screen"/>
 </launch>

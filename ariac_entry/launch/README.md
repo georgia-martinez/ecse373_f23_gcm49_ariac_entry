@@ -4,11 +4,38 @@
 
 This package relies on the ARIAC 2019 environment which you can read more about [here] (https://bitbucket.org/osrf/ariac/wiki/2019/Home). 
 
-Clone the following repositories and put them in their own separate workspaces:
+Follow these instructions (the two repositories should be in separate workspaces):
 
-<https://github.com/cwru-eecs-373/cwru_ariac_2019.git>
-<br>
-<https://github.com/cwru-eecs-373/ecse_373_ariac.git>
+```
+# Create a catkin workspace for the simulation environment
+mkdir -p ~/ariac_ws/src
+cd ~/ariac_ws/src
+
+# Clone the repository
+git clone https://github.com/cwru-eecs-373/cwru_ariac_2019.git
+
+# Install any missing dependencies
+rosdep install --from-paths . --ignore-src -r -y
+
+# Install the simulator environment
+cd ../
+sudo -- /bin/bash -c "source /opt/ros/noetic/setup.bash; catkin_make -DCMAKE_INSTALL_PREFIX=/opt/ros/noetic install"
+
+# Make a workspace for the ARIAC node
+mkdir -p ~/ecse_373_ariac_ws/src
+cd ~/ecse_373_ariac_ws/src
+
+# Clone the GIT repository for this laboratory
+git clone https://github.com/cwru-eecs-373/ecse_373_ariac.git
+
+# Install any missing dependencies
+rosdep install --from-paths ecse_373_ariac --ignore-src -r -y
+
+# Add it to your ROS environment
+cd ../
+catkin_make
+source devel/setup.bash
+```
 
 ## Launching
 
