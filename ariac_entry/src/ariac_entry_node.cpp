@@ -43,6 +43,8 @@ std::string camera_topics[] = {
 double T_pose[4][4], T_des[4][4];
 double q_pose[6], q_des[8][6];
 
+ros::Publisher trajectory_pub;
+
 bool startCompetition(ros::NodeHandle &n) {
 	ROS_INFO("Waiting for the competition to start...");
 	ros::ServiceClient begin_client = n.serviceClient<std_srvs::Trigger>("/ariac/start_competition");
@@ -79,38 +81,6 @@ std::string getBinName(std::string type) {
 	}
 
 	return "NONE";
-}
-
-void moveArm(osrf_gear::Model model, std::string sourceFrame) {
-	geometry_msgs::TransformStamped tfStamped;
-	
-	try {
-		tfStamped = tfBuffer.lookupTransform("arm1_base_link", sourceFrame, ros::Time(0.0), ros::Duration(1.0));
-		ROS_DEBUG("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
-		
-	} catch (tf2::TransformException &ex) {
-		ROS_ERROR("%s", ex.what());
-	}
-	
-	// Create variables
-	geometry_msgs::PoseStamped part_pose, goal_pose;
-
-	// Copy pose from the logical camera.
-	part_pose.pose = model.pose;
-	tf2::doTransform(part_pose, goal_pose, tfStamped);
-	
-	goal_pose.pose.position.z += 0.10; // 10 cm above the part
-	
-	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
-	goal_pose.pose.orientation.w = 0.707;
-	goal_pose.pose.orientation.x = 0.0;
-	goal_pose.pose.orientation.y = 0.707;
-	goal_pose.pose.orientation.z = 0.0;
-	
-	tf2::doTransform(part_pose, goal_pose, tfStamped);
-	
-	geometry_msgs::Point position = goal_pose.pose.position;
-	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
 }
 
 trajectory_msgs::JointTrajectory setupJointTrajectory() {
@@ -166,6 +136,8 @@ trajectory_msgs::JointTrajectory get_trajectory(geometry_msgs::Point dest) {
 	T_des[1][3] = (double) dest.y;
 	T_des[2][3] = (double) dest.z;
 	T_des[3][3] = 1.0;
+	
+	ROS_INFO("%f %f %f %f ", T_des[0][3], T_des[1][3], T_des[2][3], T_des[3][3]);
 	
 	// The orientation of the end effector so that the end effector is down.
 	T_des[0][0] = 0.0; T_des[0][1] = -1.0; T_des[0][2] = 0.0;
@@ -223,6 +195,52 @@ trajectory_msgs::JointTrajectory get_trajectory(geometry_msgs::Point dest) {
     joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
 	
 	return joint_trajectory;
+}
+
+void moveArm(osrf_gear::Model model, std::string sourceFrame) {
+	geometry_msgs::TransformStamped tfStamped;
+	
+	try {	
+		tfStamped = tfBuffer.lookupTransform("arm1_base_link", sourceFrame, ros::Time(0.0), ros::Duration(1.0));
+		ROS_WARN("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
+		
+	} catch (tf2::TransformException &ex) {
+		ROS_ERROR("%s", ex.what());
+		return;
+	}
+	
+	// Create variables
+	geometry_msgs::PoseStamped part_pose, goal_pose;
+
+	// Copy pose from the logical camera.
+	part_pose.pose = model.pose;
+	tf2::doTransform(part_pose, goal_pose, tfStamped);
+	
+	goal_pose.pose.position.z += 0.10; // 10 cm above the part
+	
+	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
+	goal_pose.pose.orientation.w = 0.707;
+	goal_pose.pose.orientation.x = 0.0;
+	goal_pose.pose.orientation.y = 0.707;
+	goal_pose.pose.orientation.z = 0.0;
+	
+	tf2::doTransform(part_pose, goal_pose, tfStamped);
+	
+	geometry_msgs::Point position = goal_pose.pose.position;
+	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
+	
+	// Test point
+	geometry_msgs::Point test;
+	test.x = -0.4;
+	test.y = 0.0;
+	test.z = 0.2;
+	
+	trajectory_msgs::JointTrajectory joint_trajectory = get_trajectory(test);
+	
+	if (joint_trajectory.header.frame_id != "empty") {
+		ROS_INFO("Moving arm");
+		trajectory_pub.publish(joint_trajectory);
+	}
 }
 
 void processOrder() {
@@ -301,7 +319,6 @@ int main(int argc, char **argv) {
 	// Define client for getting material locations
 	locationClient = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
 	
-	// Subscribe to orders topic
 	ros::Subscriber order_sub = n.subscribe<osrf_gear::Order>("/ariac/orders", 1000, orderCallback);
 
 	// Subscribe to camera topics	
@@ -311,8 +328,8 @@ int main(int argc, char **argv) {
 		camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000, boost::bind(cameraCallback, i, _1)));
 	}
 	
-	// Subscribe to joints topic
 	ros::Subscriber joint_sub = n.subscribe<sensor_msgs::JointState>("/ariac/arm1/joint_states", 1000, jointCallback);
+	trajectory_pub = n.advertise<trajectory_msgs::JointTrajectory>("/ariac/arm1/arm/command", 1000);
 
 	// Start the competition
 
