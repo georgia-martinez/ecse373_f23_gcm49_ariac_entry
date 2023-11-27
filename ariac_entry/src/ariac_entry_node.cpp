@@ -15,10 +15,14 @@
 #include "geometry_msgs/TransformStamped.h"
 #include "geometry_msgs/Pose.h"
 
+#include "sensor_msgs/JointState.h"
+
 std::vector<osrf_gear::Order> orders;
 osrf_gear::LogicalCameraImage::ConstPtr camera_images[10];
 ros::ServiceClient locationClient; 
 tf2_ros::Buffer tfBuffer;
+
+sensor_msgs::JointState joint_states;
 
 std::string camera_topics[] = {
 	"/ariac/logical_camera_bin1",
@@ -104,6 +108,10 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 }
 
 void processOrder() {
+	if (orders.size() == 0) {
+		return;
+	}
+
 	osrf_gear::Order order = orders.at(0);
 
 	for(osrf_gear::Shipment shipment: order.shipments) {
@@ -144,11 +152,25 @@ void processOrder() {
 void orderCallback(const osrf_gear::Order msg) {
 	orders.push_back(msg);
 	ROS_INFO("Received: %s", msg.order_id.c_str());
-	processOrder();
 }
 
 void cameraCallback(int index, const osrf_gear::LogicalCameraImage::ConstPtr& image) {
 	camera_images[index] = image;
+}
+
+void jointCallback(const sensor_msgs::JointState msg) {
+	joint_states = msg;
+}
+
+void printCurrentJointStates() {
+	std::string current;
+
+    for (std::string s : joint_states.name) {
+        current += s + " ";
+    }
+    
+
+	ROS_INFO_STREAM_THROTTLE(10, current.c_str());    
 }
 
 int main(int argc, char **argv) {
@@ -161,7 +183,7 @@ int main(int argc, char **argv) {
 	// Define client for getting material locations
 	locationClient = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
 	
-	// Subscribe to orders
+	// Subscribe to orders topic
 	ros::Subscriber sub = n.subscribe<osrf_gear::Order>("/ariac/orders", 1000, orderCallback);
 
 	// Subscribe to camera topics	
@@ -170,15 +192,26 @@ int main(int argc, char **argv) {
 	for(int i = 0; i < 10; i++) {
 		camera_subs.push_back(n.subscribe<osrf_gear::LogicalCameraImage>(camera_topics[i], 1000, boost::bind(cameraCallback, i, _1)));
 	}
+	
+	// Subscribe to joints topic
+	ros::Subscriber jointSub = n.subscribe<sensor_msgs::JointState>("/ariac/arm1/joint_states", 1000, jointCallback);
 
 	// Start the competition
-	ros::Rate loop_rate(10);
-	
+
 	if(!startCompetition(n)) {
 		return 1;
 	}
 
-	ros::spin();
+	ros::Rate loop_rate(10);
+	ros::AsyncSpinner spinner(1);
+	spinner.start();
+
+	while(ros::ok) {
+		processOrder();
+		printCurrentJointStates();
+		
+		loop_rate.sleep();
+	}
 
 	return 0;
 }
