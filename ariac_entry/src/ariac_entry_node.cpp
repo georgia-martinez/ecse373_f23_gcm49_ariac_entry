@@ -205,50 +205,10 @@ trajectory_msgs::JointTrajectory get_trajectory(geometry_msgs::Point dest) {
 	return joint_trajectory;
 }
 
-geometry_msgs::TransformStamped getTfStamped(std::string frame) {
-	geometry_msgs::TransformStamped tfStamped;
-	
-	try {	
-		tfStamped = tfBuffer.lookupTransform("arm1_base_link", frame, ros::Time(0.0), ros::Duration(1.0));
-		ROS_WARN("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
-		
-	} catch (tf2::TransformException &ex) {
-		ROS_ERROR("%s", ex.what());
-	}
-	
-	return tfStamped;	
-}
-
-void moveArm(osrf_gear::Model model, std::string sourceFrame) {	
-	// Stuff
-	geometry_msgs::TransformStamped tfStamped = getTfStamped(sourceFrame);
-	
-	geometry_msgs::PoseStamped part_pose; 
-	geometry_msgs::PoseStamped goal_pose;
-
-	// Copy pose from the logical camera.
-	part_pose.pose = model.pose;
-	tf2::doTransform(part_pose, goal_pose, tfStamped);
-	
-	goal_pose.pose.position.z += 0.10; // 10 cm above the part
-	
-	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
-	goal_pose.pose.orientation.w = 0.707;
-	goal_pose.pose.orientation.x = 0.0;
-	goal_pose.pose.orientation.y = 0.707;
-	goal_pose.pose.orientation.z = 0.0;
-	
-	tf2::doTransform(part_pose, goal_pose, tfStamped);
-	
-	geometry_msgs::Point position = goal_pose.pose.position;
-	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
-}
-
 void callActionServer(trajectory_msgs::JointTrajectory joint_trajectory) {
 	
 	// Make sure there are solutions
     if (joint_trajectory.header.frame_id == "empty") {
-        ROS_INFO("NO SOLUTIONS");
         return;
     }
     
@@ -271,9 +231,53 @@ void callActionServer(trajectory_msgs::JointTrajectory joint_trajectory) {
 	ROS_INFO("Action Server returned with status: [%i] %s", state.state_, state.toString().c_str());
 }
 
+void useGrabber(geometry_msgs::Point position, bool grab) {
+	trajectory_msgs::JointTrajectory joint_trajectory = get_trajectory(position);
+	callActionServer(joint_trajectory);
+}
+
+geometry_msgs::TransformStamped getTfStamped(std::string frame) {
+	geometry_msgs::TransformStamped tfStamped;
+	
+	try {	
+		tfStamped = tfBuffer.lookupTransform("arm1_base_link", frame, ros::Time(0.0), ros::Duration(1.0));
+		ROS_DEBUG("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
+		
+	} catch (tf2::TransformException &ex) {
+		ROS_ERROR("%s", ex.what());
+	}
+	
+	return tfStamped;	
+}
+
+void moveArm(osrf_gear::Model model, std::string sourceFrame) {	
+	geometry_msgs::TransformStamped tfStamped = getTfStamped(sourceFrame);
+	
+	geometry_msgs::PoseStamped part_pose; 
+	geometry_msgs::PoseStamped goal_pose;
+
+	// Copy pose from the logical camera
+	part_pose.pose = model.pose;
+	tf2::doTransform(part_pose, goal_pose, tfStamped);
+	
+	goal_pose.pose.position.z += 0.10; // 10 cm above the part
+	
+	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
+	goal_pose.pose.orientation.w = 0.707;
+	goal_pose.pose.orientation.x = 0.0;
+	goal_pose.pose.orientation.y = 0.707;
+	goal_pose.pose.orientation.z = 0.0;
+	
+	tf2::doTransform(part_pose, goal_pose, tfStamped);
+	
+	geometry_msgs::Point position = goal_pose.pose.position;
+	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
+	
+	useGrabber(position, true);
+}
+
 void moveBase(double base_pos) {	
 	trajectory_msgs::JointTrajectory joint_trajectory = setupJointTrajectory();
-	//trajectory_msgs::JointTrajectory joint_trajectory = get_trajectory(home);
 	
 	//if (joint_trajectory.header.frame_id != "empty") {
 		//ROS_INFO("Moving arm");
@@ -328,17 +332,15 @@ void processOrder() {
 						double base_pos = 0; // base of arm
 						
 						if (bin == "bin4") {
-							base_pos = -0.2;
+							base_pos = .38;
 						} else if (bin == "bin5") {
-							base_pos = 0.5;
+							base_pos = 1.15;
 						} else if (bin == "bin6") {
-							base_pos = 1.5;
+							base_pos = 1.91;
 						}
 						
 						moveBase(base_pos);
-						// moveArm(model, sourceFrame);
-						
-						break;
+						moveArm(model, sourceFrame);						
 					}
 				}	
 			}
@@ -360,17 +362,14 @@ void cameraCallback(int index, const osrf_gear::LogicalCameraImage::ConstPtr& im
 
 void jointCallback(const sensor_msgs::JointState msg) {
 	joint_states = msg;
-}
-
-void printCurrentJointStates() {
+	
 	std::string current;
-
-    for (std::string s : joint_states.name) {
+	
+	for (std::string s : joint_states.name) {
         current += s + " ";
     }
     
-
-	ROS_INFO_STREAM_THROTTLE(10, current.c_str());    
+	ROS_INFO_STREAM_THROTTLE(10, current.c_str()); 
 }
 
 int main(int argc, char **argv) {
@@ -409,8 +408,6 @@ int main(int argc, char **argv) {
 
 	while(ros::ok) {
 		processOrder();
-		printCurrentJointStates();
-		
 		loop_rate.sleep();
 	}
 
