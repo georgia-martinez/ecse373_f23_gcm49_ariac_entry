@@ -19,12 +19,18 @@
 #include "sensor_msgs/JointState.h"
 #include "trajectory_msgs/JointTrajectory.h"
 
+#include "actionlib/client/simple_action_client.h"
+#include "actionlib/client/terminal_state.h"
+#include "control_msgs/FollowJointTrajectoryAction.h"
+
 std::vector<osrf_gear::Order> orders;
 osrf_gear::LogicalCameraImage::ConstPtr camera_images[10];
 ros::ServiceClient locationClient; 
 tf2_ros::Buffer tfBuffer;
 
 sensor_msgs::JointState joint_states;
+
+actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> *trajectory_as;
 
 std::string camera_topics[] = {
 	"/ariac/logical_camera_bin1",
@@ -44,6 +50,8 @@ double T_pose[4][4], T_des[4][4];
 double q_pose[6], q_des[8][6];
 
 ros::Publisher trajectory_pub;
+
+int count = 0;
 
 bool startCompetition(ros::NodeHandle &n) {
 	ROS_INFO("Waiting for the competition to start...");
@@ -197,20 +205,26 @@ trajectory_msgs::JointTrajectory get_trajectory(geometry_msgs::Point dest) {
 	return joint_trajectory;
 }
 
-void moveArm(osrf_gear::Model model, std::string sourceFrame) {
+geometry_msgs::TransformStamped getTfStamped(std::string frame) {
 	geometry_msgs::TransformStamped tfStamped;
 	
 	try {	
-		tfStamped = tfBuffer.lookupTransform("arm1_base_link", sourceFrame, ros::Time(0.0), ros::Duration(1.0));
+		tfStamped = tfBuffer.lookupTransform("arm1_base_link", frame, ros::Time(0.0), ros::Duration(1.0));
 		ROS_WARN("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
 		
 	} catch (tf2::TransformException &ex) {
 		ROS_ERROR("%s", ex.what());
-		return;
 	}
 	
-	// Create variables
-	geometry_msgs::PoseStamped part_pose, goal_pose;
+	return tfStamped;	
+}
+
+void moveArm(osrf_gear::Model model, std::string sourceFrame) {	
+	// Stuff
+	geometry_msgs::TransformStamped tfStamped = getTfStamped(sourceFrame);
+	
+	geometry_msgs::PoseStamped part_pose; 
+	geometry_msgs::PoseStamped goal_pose;
 
 	// Copy pose from the logical camera.
 	part_pose.pose = model.pose;
@@ -228,19 +242,61 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	
 	geometry_msgs::Point position = goal_pose.pose.position;
 	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
+}
+
+void callActionServer(trajectory_msgs::JointTrajectory joint_trajectory) {
 	
-	// Test point
-	geometry_msgs::Point test;
-	test.x = -0.4;
-	test.y = 0.0;
-	test.z = 0.2;
+	// Make sure there are solutions
+    if (joint_trajectory.header.frame_id == "empty") {
+        ROS_INFO("NO SOLUTIONS");
+        return;
+    }
+    
+	// Create the structure to populate for running the Action Server.
+	control_msgs::FollowJointTrajectoryAction joint_trajectory_as;
 	
-	trajectory_msgs::JointTrajectory joint_trajectory = get_trajectory(test);
+	// It is possible to reuse the JointTrajectory from above
+	joint_trajectory_as.action_goal.goal.trajectory = joint_trajectory;
 	
-	if (joint_trajectory.header.frame_id != "empty") {
-		ROS_INFO("Moving arm");
-		trajectory_pub.publish(joint_trajectory);
-	}
+	// The header and goal (not the tolerances) of the action must be filled out as well.
+	// (rosmsg show control_msgs/FollowJointTrajectoryAction)
+	joint_trajectory_as.action_goal.header.seq = count++;
+	joint_trajectory_as.action_goal.header.stamp = ros::Time::now();
+	joint_trajectory_as.action_goal.header.frame_id = "/world";
+
+	joint_trajectory_as.action_goal.goal_id.stamp = ros::Time::now();
+	joint_trajectory_as.action_goal.goal_id.id = std::to_string(count);
+
+	actionlib::SimpleClientGoalState state = trajectory_as->sendGoalAndWait(joint_trajectory_as.action_goal.goal, ros::Duration(30.0), ros::Duration(30.0));
+	ROS_INFO("Action Server returned with status: [%i] %s", state.state_, state.toString().c_str());
+}
+
+void moveBaseToPosition(double base_pos) {
+	geometry_msgs::Point home;
+	home.x = -0.4;
+	home.y = 0.0;
+	home.z = 0.2;
+	
+	trajectory_msgs::JointTrajectory joint_trajectory = get_trajectory(home);
+	
+	//if (joint_trajectory.header.frame_id != "empty") {
+		//ROS_INFO("Moving arm");
+		//trajectory_pub.publish(joint_trajectory);
+	//}
+	
+	for (int indy = 0; indy < joint_trajectory.joint_names.size(); indy++) {
+        for (int indz = 0; indz < joint_states.name.size(); indz++) {
+            if (joint_trajectory.joint_names[indy] == joint_states.name[indz]) {
+                joint_trajectory.points[0].positions[indy] = joint_states.position[indz];
+                joint_trajectory.points[1].positions[indy] = joint_states.position[indz];
+                break;
+            }
+        }
+    }
+    
+    joint_trajectory.points[1].positions[0] = base_pos;
+    joint_trajectory.points[1].time_from_start = ros::Duration(5.0);
+    callActionServer(joint_trajectory);
 }
 
 void processOrder() {
@@ -272,7 +328,20 @@ void processOrder() {
 						ROS_WARN("Position: x=%f, y=%f, z=%f (relative to camera)", position.x, position.y, position.z); 
 						
 						std::string sourceFrame = "logical_camera_"+bin+"_frame";				
-						moveArm(model, sourceFrame);
+						
+						double base_pos = 0;
+						
+						if (bin == "bin4") {
+							base_pos = -0.2;
+						} else if (bin == "bin5") {
+							base_pos = 0.5;
+						} else if (bin == "bin6") {
+							base_pos = 1.5;
+						}
+						
+						moveBaseToPosition(base_pos);
+						
+						// moveArm(model, sourceFrame);
 						
 						break;
 					}
@@ -330,6 +399,8 @@ int main(int argc, char **argv) {
 	
 	ros::Subscriber joint_sub = n.subscribe<sensor_msgs::JointState>("/ariac/arm1/joint_states", 1000, jointCallback);
 	trajectory_pub = n.advertise<trajectory_msgs::JointTrajectory>("/ariac/arm1/arm/command", 1000);
+    trajectory_as = new actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>("/ariac/arm1/arm/follow_joint_trajectory/", true);
+
 
 	// Start the competition
 
