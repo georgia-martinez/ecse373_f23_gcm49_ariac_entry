@@ -271,13 +271,9 @@ void callActionServer(trajectory_msgs::JointTrajectory joint_trajectory) {
 	ROS_INFO("Action Server returned with status: [%i] %s", state.state_, state.toString().c_str());
 }
 
-void moveBaseToPosition(double base_pos) {
-	geometry_msgs::Point home;
-	home.x = -0.4;
-	home.y = 0.0;
-	home.z = 0.2;
-	
-	trajectory_msgs::JointTrajectory joint_trajectory = get_trajectory(home);
+void moveBase(double base_pos) {	
+	trajectory_msgs::JointTrajectory joint_trajectory = setupJointTrajectory();
+	//trajectory_msgs::JointTrajectory joint_trajectory = get_trajectory(home);
 	
 	//if (joint_trajectory.header.frame_id != "empty") {
 		//ROS_INFO("Moving arm");
@@ -329,7 +325,7 @@ void processOrder() {
 						
 						std::string sourceFrame = "logical_camera_"+bin+"_frame";				
 						
-						double base_pos = 0;
+						double base_pos = 0; // base of arm
 						
 						if (bin == "bin4") {
 							base_pos = -0.2;
@@ -339,8 +335,7 @@ void processOrder() {
 							base_pos = 1.5;
 						}
 						
-						moveBaseToPosition(base_pos);
-						
+						moveBase(base_pos);
 						// moveArm(model, sourceFrame);
 						
 						break;
