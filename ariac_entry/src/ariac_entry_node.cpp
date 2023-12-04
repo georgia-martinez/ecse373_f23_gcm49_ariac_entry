@@ -23,6 +23,9 @@
 #include "actionlib/client/terminal_state.h"
 #include "control_msgs/FollowJointTrajectoryAction.h"
 
+// name:= piston_rod_part x:=0.546343 y:=0.157368 z:=0.018169
+// Position:              x=0.546975, y=0.157908, z=0.019435 (relative to camera) 
+
 std::vector<osrf_gear::Order> orders;
 osrf_gear::LogicalCameraImage::ConstPtr camera_images[10];
 ros::ServiceClient locationClient; 
@@ -48,8 +51,6 @@ std::string camera_topics[] = {
 // Instantiate variables for use with the kinematic system.
 double T_pose[4][4], T_des[4][4];
 double q_pose[6], q_des[8][6];
-
-ros::Publisher trajectory_pub;
 
 int count = 0;
 
@@ -126,7 +127,7 @@ trajectory_msgs::JointTrajectory setupJointTrajectory() {
     return joint_trajectory;	
 }
 
-trajectory_msgs::JointTrajectory get_trajectory(geometry_msgs::Point dest) {
+trajectory_msgs::JointTrajectory getTrajectory(geometry_msgs::Point dest) {
 	// Where is the end effector given the joint angles.
 	// joint_states.position[0] is the linear_arm_actuator_joint
 	q_pose[0] = joint_states.position[1];
@@ -145,7 +146,7 @@ trajectory_msgs::JointTrajectory get_trajectory(geometry_msgs::Point dest) {
 	T_des[2][3] = (double) dest.z;
 	T_des[3][3] = 1.0;
 	
-	ROS_INFO("%f %f %f %f ", T_des[0][3], T_des[1][3], T_des[2][3], T_des[3][3]);
+	// ROS_INFO("%f %f %f", T_des[0][3], T_des[1][3], T_des[2][3]);
 	
 	// The orientation of the end effector so that the end effector is down.
 	T_des[0][0] = 0.0; T_des[0][1] = -1.0; T_des[0][2] = 0.0;
@@ -161,8 +162,9 @@ trajectory_msgs::JointTrajectory get_trajectory(geometry_msgs::Point dest) {
 		ROS_WARN("NO INITIAL SOLUTIONS FOUND");
 		joint_trajectory.header.frame_id = "empty";
         return joint_trajectory;
+	} else {
+		ROS_WARN("FOUND %d SOLUTIONS", num_sols);
 	}
-
 	
 	// Set the start point to the current position of the joints from joint_states.
 	joint_trajectory.points[0].positions.resize(joint_trajectory.joint_names.size());
@@ -232,7 +234,7 @@ void callActionServer(trajectory_msgs::JointTrajectory joint_trajectory) {
 }
 
 void useGrabber(geometry_msgs::Point position, bool grab) {
-	trajectory_msgs::JointTrajectory joint_trajectory = get_trajectory(position);
+	trajectory_msgs::JointTrajectory joint_trajectory = getTrajectory(position);
 	callActionServer(joint_trajectory);
 }
 
@@ -250,6 +252,17 @@ geometry_msgs::TransformStamped getTfStamped(std::string frame) {
 	return tfStamped;	
 }
 
+void moveArmHome() {
+	ROS_INFO("Returning home");
+
+	geometry_msgs::Point home;
+	home.x = -0.4;
+	home.y = 0.1;
+	home.z = 0.1;
+	
+	callActionServer(getTrajectory(home));
+}
+
 void moveArm(osrf_gear::Model model, std::string sourceFrame) {	
 	geometry_msgs::TransformStamped tfStamped = getTfStamped(sourceFrame);
 	
@@ -260,7 +273,7 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	part_pose.pose = model.pose;
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
 	
-	goal_pose.pose.position.z += 0.10; // 10 cm above the part
+	// goal_pose.pose.position.z += 0.10; // 10 cm above the part
 	
 	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
 	goal_pose.pose.orientation.w = 0.707;
@@ -340,7 +353,7 @@ void processOrder() {
 						}
 						
 						moveBase(base_pos);
-						moveArm(model, sourceFrame);						
+						// moveArm(model, sourceFrame);						
 					}
 				}	
 			}
@@ -392,7 +405,6 @@ int main(int argc, char **argv) {
 	}
 	
 	ros::Subscriber joint_sub = n.subscribe<sensor_msgs::JointState>("/ariac/arm1/joint_states", 1000, jointCallback);
-	trajectory_pub = n.advertise<trajectory_msgs::JointTrajectory>("/ariac/arm1/arm/command", 1000);
     trajectory_as = new actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>("/ariac/arm1/arm/follow_joint_trajectory/", true);
 
 
