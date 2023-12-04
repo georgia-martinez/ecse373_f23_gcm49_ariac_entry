@@ -15,6 +15,7 @@
 #include "geometry_msgs/TransformStamped.h"
 #include "geometry_msgs/Pose.h"
 
+#include "ik_service/PoseIK.h" 
 #include "ur_kinematics/ur_kin.h"
 #include "sensor_msgs/JointState.h"
 #include "trajectory_msgs/JointTrajectory.h"
@@ -49,6 +50,8 @@ std::string camera_topics[] = {
 };
 
 // Instantiate variables for use with the kinematic system.
+ros::ServiceClient ik_client;
+
 double T_pose[4][4], T_des[4][4];
 double q_pose[6], q_des[8][6];
 
@@ -252,17 +255,6 @@ geometry_msgs::TransformStamped getTfStamped(std::string frame) {
 	return tfStamped;	
 }
 
-void moveArmHome() {
-	ROS_INFO("Returning home");
-
-	geometry_msgs::Point home;
-	home.x = -0.4;
-	home.y = 0.1;
-	home.z = 0.1;
-	
-	callActionServer(getTrajectory(home));
-}
-
 void moveArm(osrf_gear::Model model, std::string sourceFrame) {	
 	geometry_msgs::TransformStamped tfStamped = getTfStamped(sourceFrame);
 	
@@ -273,7 +265,7 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	part_pose.pose = model.pose;
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
 	
-	// goal_pose.pose.position.z += 0.10; // 10 cm above the part
+	goal_pose.pose.position.z += 0.10; // 10 cm above the part
 	
 	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
 	goal_pose.pose.orientation.w = 0.707;
@@ -286,16 +278,34 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	geometry_msgs::Point position = goal_pose.pose.position;
 	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
 	
-	useGrabber(position, true);
+	// geometry_msgs::Point test;
+	// test.x = -.4;
+	// test.y = .1;
+	// test.z = .1;
+	
+	// useGrabber(position, true);
+	
+	ik_service::PoseIK ik_pose; 
+	ik_pose.request.part_pose = goal_pose.pose;
+    ik_client.call(ik_pose);
+	
+	trajectory_msgs::JointTrajectory joint_trajectory = setupJointTrajectory();
+	
+	// The actuators are commanded in an odd order, enter the joint positions in the correct positions
+    for (int indy = 0; indy < 6; indy++) 
+    {
+      joint_trajectory.points[1].positions[indy + 1] = ik_pose.response.joint_solutions.front().joint_angles.at(indy);
+    }
+
+    // How long to take for the movement.
+    joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
+	
+	callActionServer(joint_trajectory);
 }
 
 void moveBase(double base_pos) {	
 	trajectory_msgs::JointTrajectory joint_trajectory = setupJointTrajectory();
-	
-	//if (joint_trajectory.header.frame_id != "empty") {
-		//ROS_INFO("Moving arm");
-		//trajectory_pub.publish(joint_trajectory);
-	//}
+
 	
 	for (int indy = 0; indy < joint_trajectory.joint_names.size(); indy++) {
         for (int indz = 0; indz < joint_states.name.size(); indz++) {
@@ -351,9 +361,9 @@ void processOrder() {
 						} else if (bin == "bin6") {
 							base_pos = 1.91;
 						}
-						
+
 						moveBase(base_pos);
-						// moveArm(model, sourceFrame);						
+						moveArm(model, sourceFrame);						
 					}
 				}	
 			}
@@ -406,7 +416,7 @@ int main(int argc, char **argv) {
 	
 	ros::Subscriber joint_sub = n.subscribe<sensor_msgs::JointState>("/ariac/arm1/joint_states", 1000, jointCallback);
     trajectory_as = new actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>("/ariac/arm1/arm/follow_joint_trajectory/", true);
-
+	ik_client = n.serviceClient<ik_service::PoseIK>("/ik_service");
 
 	// Start the competition
 
