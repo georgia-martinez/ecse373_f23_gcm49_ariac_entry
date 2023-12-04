@@ -1,4 +1,6 @@
-# ECSE 373 Laboratory #5
+# ECSE 373 Ariac Entry
+
+![competition image](competition.png)
 
 ## Set up
 
