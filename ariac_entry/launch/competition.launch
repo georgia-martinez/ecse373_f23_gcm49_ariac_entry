@@ -2,6 +2,6 @@
 	<include file="$(find ecse_373_ariac)/launch/ecse_373_ariac.launch">
 		<arg name="python" value="false"/>
 	</include>
-	
+	<include file="$(find ik_service)/launch/ik_service.launch" />
 	<node name="ariac_entry" pkg="ariac_entry" type="ariac_entry" output="screen"/>
 </launch>

@@ -27,6 +27,11 @@
 // name:= piston_rod_part x:=0.546343 y:=0.157368 z:=0.018169
 // Position:              x=0.546975, y=0.157908, z=0.019435 (relative to camera) 
 
+//     joint_angles: [9.27114200197346e-310, 9.27115995263627e-310, 1.39067034567304e-309, 1.39067034567213e-309, 9.2711420019355e-310, 9.27115995263627e-310]
+
+//     joint_angles: [9.27114200197346e-310, 9.27115995263627e-310, 1.39067034567304e-309, 1.39067034567213e-309, 9.2711420019355e-310, 9.27115995263627e-310]
+
+
 std::vector<osrf_gear::Order> orders;
 osrf_gear::LogicalCameraImage::ConstPtr camera_images[10];
 ros::ServiceClient locationClient; 
@@ -114,62 +119,11 @@ trajectory_msgs::JointTrajectory setupJointTrajectory() {
     joint_trajectory.joint_names.push_back("wrist_1_joint");
     joint_trajectory.joint_names.push_back("wrist_2_joint");
     joint_trajectory.joint_names.push_back("wrist_3_joint");
-
+    
     // Set a start and end point.
     joint_trajectory.points.resize(2);
-
-    //  Set the start point to the current position of the joints from joint_states.
-    joint_trajectory.points[0].positions.resize(joint_trajectory.joint_names.size());
-
-    // When to start (immediately upon receipt).
-    joint_trajectory.points[0].time_from_start = ros::Duration(0.01);
-
-    joint_trajectory.points[0].positions.resize(joint_trajectory.joint_names.size());
-    joint_trajectory.points[1].positions.resize(joint_trajectory.joint_names.size());
     
-    return joint_trajectory;	
-}
-
-trajectory_msgs::JointTrajectory getTrajectory(geometry_msgs::Point dest) {
-	// Where is the end effector given the joint angles.
-	// joint_states.position[0] is the linear_arm_actuator_joint
-	q_pose[0] = joint_states.position[1];
-	q_pose[1] = joint_states.position[2];
-	q_pose[2] = joint_states.position[3];
-	q_pose[3] = joint_states.position[4];
-	q_pose[4] = joint_states.position[5];
-	q_pose[5] = joint_states.position[6];
-	
-	ur_kinematics::forward((double*) &q_pose, (double*) &T_pose);
-
-	// What joint angles put the end effector at a specific place.
-	// Desired pose of the end effector wrt the base_link.
-	T_des[0][3] = (double) dest.x;
-	T_des[1][3] = (double) dest.y;
-	T_des[2][3] = (double) dest.z;
-	T_des[3][3] = 1.0;
-	
-	// ROS_INFO("%f %f %f", T_des[0][3], T_des[1][3], T_des[2][3]);
-	
-	// The orientation of the end effector so that the end effector is down.
-	T_des[0][0] = 0.0; T_des[0][1] = -1.0; T_des[0][2] = 0.0;
-	T_des[1][0] = 0.0; T_des[1][1] = 0.0; T_des[1][2] = 1.0;
-	T_des[2][0] = -1.0; T_des[2][1] = 0.0; T_des[2][2] = 0.0;
-	T_des[3][0] = 0.0; T_des[3][1] = 0.0; T_des[3][2] = 0.0;
-	
-	int num_sols = ur_kinematics::inverse((double*) &T_des, (double*) &q_des);
-
-	trajectory_msgs::JointTrajectory joint_trajectory = setupJointTrajectory();
-	
-	if (num_sols == 0) {
-		ROS_WARN("NO INITIAL SOLUTIONS FOUND");
-		joint_trajectory.header.frame_id = "empty";
-        return joint_trajectory;
-	} else {
-		ROS_WARN("FOUND %d SOLUTIONS", num_sols);
-	}
-	
-	// Set the start point to the current position of the joints from joint_states.
+    // Set the start point to the current position of the joints from joint_states.
 	joint_trajectory.points[0].positions.resize(joint_trajectory.joint_names.size());
 	
 	for (int indy = 0; indy < joint_trajectory.joint_names.size(); indy++) {
@@ -180,42 +134,26 @@ trajectory_msgs::JointTrajectory getTrajectory(geometry_msgs::Point dest) {
 			}
 		}
 	}
-		
-	// Find a good solution
-	int solution_index = -1;
-	
-	for (int i = 0; i < num_sols; i++) {
-		double shoulder_angle = q_des[i][1];
-		double wrist_1_angle = q_des[i][3];
 
-		if (abs(M_PI - wrist_1_angle) <= M_PI / 2 && shoulder_angle >= 4 * M_PI / 3) {
-			solution_index = i;
-			break;
-		}
-	}
+	// When to start (immediately upon receipt).
+	joint_trajectory.points[0].time_from_start = ros::Duration(0.0);
 	
-	if (solution_index == -1) {
-		ROS_WARN("NO VIABLE SOLUTIONS FOUND");
-		joint_trajectory.header.frame_id = "empty";
-        return joint_trajectory;
-	}
+	// Set the end point for the movement
+	joint_trajectory.points[1].positions.resize(joint_trajectory.joint_names.size());
 	
-	// Enter the joint positions in the correct positions
-	for (int indy = 0; indy < 6; indy++) {
-        joint_trajectory.points[1].positions[indy + 1] = q_des[solution_index][indy];
-    }
-
+	// Set the linear_arm_actuator_joint from joint_states as it is not part of the inverse kinematics solution
+	joint_trajectory.points[1].positions[0] = joint_states.position[1];
     joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
-	
-	return joint_trajectory;
+    
+    return joint_trajectory;	
 }
 
 void callActionServer(trajectory_msgs::JointTrajectory joint_trajectory) {
 	
 	// Make sure there are solutions
-    if (joint_trajectory.header.frame_id == "empty") {
-        return;
-    }
+    //if (joint_trajectory.header.frame_id == "empty") {
+        //return;
+    //}
     
 	// Create the structure to populate for running the Action Server.
 	control_msgs::FollowJointTrajectoryAction joint_trajectory_as;
@@ -237,8 +175,8 @@ void callActionServer(trajectory_msgs::JointTrajectory joint_trajectory) {
 }
 
 void useGrabber(geometry_msgs::Point position, bool grab) {
-	trajectory_msgs::JointTrajectory joint_trajectory = getTrajectory(position);
-	callActionServer(joint_trajectory);
+	//trajectory_msgs::JointTrajectory joint_trajectory = getTrajectory(position);
+	//callActionServer(joint_trajectory);
 }
 
 geometry_msgs::TransformStamped getTfStamped(std::string frame) {
@@ -264,48 +202,57 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	// Copy pose from the logical camera
 	part_pose.pose = model.pose;
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
-	
-	goal_pose.pose.position.z += 0.10; // 10 cm above the part
+
+	// 10 cm above the part
+	goal_pose.pose.position.z += 0.10;
 	
 	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
+
 	goal_pose.pose.orientation.w = 0.707;
 	goal_pose.pose.orientation.x = 0.0;
 	goal_pose.pose.orientation.y = 0.707;
-	goal_pose.pose.orientation.z = 0.0;
-	
+	goal_pose.pose.orientation.z = 0;	
+
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
 	
+	//goal_pose.pose.position.x = 5;
+	//goal_pose.pose.position.y = 5;
+	//goal_pose.pose.position.z = 5;
+
 	geometry_msgs::Point position = goal_pose.pose.position;
 	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
 	
-	// geometry_msgs::Point test;
-	// test.x = -.4;
-	// test.y = .1;
-	// test.z = .1;
-	
-	// useGrabber(position, true);
-	
+	// Call the ik_service
 	ik_service::PoseIK ik_pose; 
 	ik_pose.request.part_pose = goal_pose.pose;
     ik_client.call(ik_pose);
+    
+    int num_sols = ik_pose.response.num_sols;
+    
+    ROS_INFO("Number of poses returned [%i]", ik_pose.response.num_sols);
 	
-	trajectory_msgs::JointTrajectory joint_trajectory = setupJointTrajectory();
+	if (num_sols == 0) {
+		return;
+	}
 	
-	// The actuators are commanded in an odd order, enter the joint positions in the correct positions
-    for (int indy = 0; indy < 6; indy++) 
-    {
-      joint_trajectory.points[1].positions[indy + 1] = ik_pose.response.joint_solutions.front().joint_angles.at(indy);
+	trajectory_msgs::JointTrajectory joint_trajectory;// = setupJointTrajectory();	
+	joint_trajectory.points.resize(2);
+	joint_trajectory.points[0].positions.resize(7);
+	joint_trajectory.points[1].positions.resize(7);
+	
+	ROS_INFO("%li %li %li %li", joint_trajectory.points.size(), joint_trajectory.points[0].positions.size(), ik_pose.response.joint_solutions.size(), ik_pose.response.joint_solutions[0].joint_angles.size()); 
+	
+	// Enter the joint positions in the correct positions
+    for (int indy = 0; indy < 6; indy++) {
+      joint_trajectory.points[1].positions[indy+1] = 			 
+      		ik_pose.response.joint_solutions[0].joint_angles[indy];
     }
-
-    // How long to take for the movement.
-    joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
-	
+	ROS_INFO("Got here");
 	callActionServer(joint_trajectory);
 }
 
 void moveBase(double base_pos) {	
 	trajectory_msgs::JointTrajectory joint_trajectory = setupJointTrajectory();
-
 	
 	for (int indy = 0; indy < joint_trajectory.joint_names.size(); indy++) {
         for (int indz = 0; indz < joint_states.name.size(); indz++) {
@@ -362,8 +309,10 @@ void processOrder() {
 							base_pos = 1.91;
 						}
 
-						moveBase(base_pos);
-						moveArm(model, sourceFrame);						
+						moveArm(model, sourceFrame);	
+						//moveBase(base_pos);
+
+						break;					
 					}
 				}	
 			}
@@ -415,7 +364,9 @@ int main(int argc, char **argv) {
 	}
 	
 	ros::Subscriber joint_sub = n.subscribe<sensor_msgs::JointState>("/ariac/arm1/joint_states", 1000, jointCallback);
+    
     trajectory_as = new actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>("/ariac/arm1/arm/follow_joint_trajectory/", true);
+	
 	ik_client = n.serviceClient<ik_service::PoseIK>("/ik_service");
 
 	// Start the competition
