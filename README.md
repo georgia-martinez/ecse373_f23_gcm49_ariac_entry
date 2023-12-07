@@ -43,16 +43,16 @@ source devel/setup.bash
 
 ## Launching
 
-`roslaunch ariac_entry entry.launch`
+First, the ARIAC simulation must be launched:
 
-When the gazebo window opens, hit the play button at the bottom of the screen to start the simulation.
+`roslaunch ariac_entry competition.launch`
+
+Then, the ariac_entry node:
+
+`rosrun ariac_entry ariac_entry`
+
+Finally, navigate back to the gazebo simulation window and hit the play button at the bottom of the screen to start the simulation.
 
 ## About the package
 
-The purpose of this package is to process orders in the ARIAC simulation by:
-
-- Subscribing to the `/ariac/orders` topic to receive new orders which are pushed to a queue
-- Using the `material_location` service to find the bin(s) that has a part of the type
-required by the first product in the first shipment of the first order.
-- Subscribing to all logical_cameras and storing the information
-- Logging a message with the bin number and (x, y, Z) position of the part
+The purpose of this package is to process orders in the ARIAC simulation. The node is notified when an order comes in and is given the location of a part in a bin. Then, the arm moves to a position right above the part, lowers itself, touches the part, and raises itself. This is done in a loop for every part in the order.

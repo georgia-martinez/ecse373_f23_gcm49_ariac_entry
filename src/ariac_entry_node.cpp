@@ -24,10 +24,6 @@
 #include "actionlib/client/terminal_state.h"
 #include "control_msgs/FollowJointTrajectoryAction.h"
 
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <cmath>  // for M_PI
-
 std::vector<osrf_gear::Order> orders;
 osrf_gear::LogicalCameraImage::ConstPtr camera_images[10];
 ros::ServiceClient locationClient; 
