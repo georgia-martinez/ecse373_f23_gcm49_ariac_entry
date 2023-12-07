@@ -24,14 +24,6 @@
 #include "actionlib/client/terminal_state.h"
 #include "control_msgs/FollowJointTrajectoryAction.h"
 
-// name:= piston_rod_part x:=0.546343 y:=0.157368 z:=0.018169
-// Position:              x=0.546975, y=0.157908, z=0.019435 (relative to camera) 
-
-//     joint_angles: [9.27114200197346e-310, 9.27115995263627e-310, 1.39067034567304e-309, 1.39067034567213e-309, 9.2711420019355e-310, 9.27115995263627e-310]
-
-//     joint_angles: [9.27114200197346e-310, 9.27115995263627e-310, 1.39067034567304e-309, 1.39067034567213e-309, 9.2711420019355e-310, 9.27115995263627e-310]
-
-
 std::vector<osrf_gear::Order> orders;
 osrf_gear::LogicalCameraImage::ConstPtr camera_images[10];
 ros::ServiceClient locationClient; 
@@ -202,52 +194,60 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	// Copy pose from the logical camera
 	part_pose.pose = model.pose;
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
-
-	// 10 cm above the part
-	goal_pose.pose.position.z += 0.10;
 	
 	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
-
-	goal_pose.pose.orientation.w = 0.707;
-	goal_pose.pose.orientation.x = 0.0;
-	goal_pose.pose.orientation.y = 0.707;
-	goal_pose.pose.orientation.z = 0;	
+	//goal_pose.pose.orientation.w = 0.707;
+	//goal_pose.pose.orientation.x = 0.0;
+	//goal_pose.pose.orientation.y = 0.707;
+	//goal_pose.pose.orientation.z = 0;	
 
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
 	
-	//goal_pose.pose.position.x = 5;
-	//goal_pose.pose.position.y = 5;
-	//goal_pose.pose.position.z = 5;
-
+	//joint_trajectory.points[1].positions[1] = 2.0;
+	//joint_trajectory.points[2].positions[1] = 2.0;
+	//joint_trajectory.points[3].positions[1] = 2.0;
+	//joint_trajectory.points[4].positions[1] = 2.0;
+	//joint_trajectory.points[5].positions[1] = 2.0;
+	//joint_trajectory.points[6].positions[1] = 2.0;
+	
+	goal_pose.pose.position.x = 0.5;
+	goal_pose.pose.position.y = 0;
+	goal_pose.pose.position.z = 0;
+	
+	goal_pose.pose.orientation.w = 1;
+	goal_pose.pose.orientation.x = 0;
+	goal_pose.pose.orientation.y = 0;
+	goal_pose.pose.orientation.z = 0;	
+	
 	geometry_msgs::Point position = goal_pose.pose.position;
 	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
 	
 	// Call the ik_service
 	ik_service::PoseIK ik_pose; 
-	ik_pose.request.part_pose = goal_pose.pose;
+	ik_pose.request.part_pose = goal_pose.pose;	
     ik_client.call(ik_pose);
     
     int num_sols = ik_pose.response.num_sols;
     
-    ROS_INFO("Number of poses returned [%i]", ik_pose.response.num_sols);
+    ROS_INFO("Number of poses returned [%i]", num_sols);
 	
 	if (num_sols == 0) {
 		return;
 	}
 	
-	trajectory_msgs::JointTrajectory joint_trajectory;// = setupJointTrajectory();	
-	joint_trajectory.points.resize(2);
-	joint_trajectory.points[0].positions.resize(7);
-	joint_trajectory.points[1].positions.resize(7);
+	trajectory_msgs::JointTrajectory joint_trajectory = setupJointTrajectory();	
+	// joint_trajectory.points.resize(2);
+	// joint_trajectory.points[0].positions.resize(7);
+	// joint_trajectory.points[1].positions.resize(7);
 	
-	ROS_INFO("%li %li %li %li", joint_trajectory.points.size(), joint_trajectory.points[0].positions.size(), ik_pose.response.joint_solutions.size(), ik_pose.response.joint_solutions[0].joint_angles.size()); 
+	// ROS_INFO("%li %li %li %li", joint_trajectory.points.size(), joint_trajectory.points[0].positions.size(), ik_pose.response.joint_solutions.size(), ik_pose.response.joint_solutions[0].joint_angles.size()); 
 	
 	// Enter the joint positions in the correct positions
     for (int indy = 0; indy < 6; indy++) {
       joint_trajectory.points[1].positions[indy+1] = 			 
       		ik_pose.response.joint_solutions[0].joint_angles[indy];
     }
-	ROS_INFO("Got here");
+
 	callActionServer(joint_trajectory);
 }
 
@@ -367,7 +367,7 @@ int main(int argc, char **argv) {
     
     trajectory_as = new actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>("/ariac/arm1/arm/follow_joint_trajectory/", true);
 	
-	ik_client = n.serviceClient<ik_service::PoseIK>("/ik_service");
+	ik_client = n.serviceClient<ik_service::PoseIK>("/pose_ik");
 
 	// Start the competition
 
