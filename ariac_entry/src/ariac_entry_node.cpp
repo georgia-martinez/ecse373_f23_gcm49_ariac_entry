@@ -201,17 +201,20 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
 	
 	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
-	goal_pose.pose.position.x = 0.0;
-	goal_pose.pose.position.y = 0.5;
-	goal_pose.pose.position.z = 0.1;
+	// goal_pose.pose.position.x = 0.0;
+	// goal_pose.pose.position.y = 0.5;
+	// goal_pose.pose.position.z = 0.1;
 	
-	//goal_pose.pose.orientation.w = 0.0;
-	//goal_pose.pose.orientation.x = 0.0;
-	//goal_pose.pose.orientation.y = 0.0;
-	//goal_pose.pose.orientation.z = 1.0;	
+	goal_pose.pose.orientation.w = 0.707;
+	goal_pose.pose.orientation.x = 0.0;
+	goal_pose.pose.orientation.y = 0.707;
+	goal_pose.pose.orientation.z = 0.0;	
 	
 	geometry_msgs::Point position = goal_pose.pose.position;
+	geometry_msgs::Quaternion orientation = goal_pose.pose.orientation;
+	
 	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
+	ROS_WARN("Orientation: w= %f, x=%f, y=%f, z=%f (relative to arm)", orientation.w, orientation.x, orientation.y, orientation.z);
 	
 	// Call the ik_service
 	ik_service::PoseIK ik_pose; 
@@ -253,7 +256,7 @@ void moveBase(double base_pos) {
     }
     
     joint_trajectory.points[1].positions[0] = base_pos;
-    joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
+    joint_trajectory.points[1].time_from_start = ros::Duration(5.0);
     callActionServer(joint_trajectory);
 }
 
@@ -296,8 +299,10 @@ void processOrder() {
 						} else if (bin == "bin6") {
 							base_pos = 1.91;
 						}
-
+						
+						ROS_INFO("Moving base to %s", bin.c_str());
 						moveBase(base_pos);
+						
 						moveArm(model, sourceFrame);	
 
 						break;					
