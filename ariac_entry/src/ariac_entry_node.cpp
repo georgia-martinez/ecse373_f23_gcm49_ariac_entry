@@ -200,15 +200,13 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	part_pose.pose = model.pose;
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
 	
-	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
-	// goal_pose.pose.position.x = 0.0;
-	// goal_pose.pose.position.y = 0.5;
-	// goal_pose.pose.position.z = 0.1;
+	// Set the position and orientation
+	goal_pose.pose.position.z += 0.10;
 	
-	goal_pose.pose.orientation.w = 0.707;
-	goal_pose.pose.orientation.x = 0.0;
-	goal_pose.pose.orientation.y = 0.707;
-	goal_pose.pose.orientation.z = 0.0;	
+	// goal_pose.pose.orientation.w = 0.707;
+	// goal_pose.pose.orientation.x = 0.0;
+	// goal_pose.pose.orientation.y = 0.707;
+	// goal_pose.pose.orientation.z = 0.0;	
 	
 	geometry_msgs::Point position = goal_pose.pose.position;
 	geometry_msgs::Quaternion orientation = goal_pose.pose.orientation;
@@ -231,15 +229,19 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	
 	trajectory_msgs::JointTrajectory joint_trajectory = setupJointTrajectory();	
 	
+	ROS_INFO_STREAM("Angle: " << ik_pose.response.joint_solutions[0]);
+	
 	// Enter the joint positions in the correct positions
     for (int indy = 0; indy < 6; indy++) {
       joint_trajectory.points[1].positions[indy+1] = 			 
       		ik_pose.response.joint_solutions[0].joint_angles[indy];
     }
+	ROS_INFO_STREAM("Angle: " << joint_trajectory.points[1]);
 
-    joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
+    joint_trajectory.points[1].time_from_start = ros::Duration(5.0);
 
 	callActionServer(joint_trajectory);
+	ros::Duration(joint_trajectory.points[1].time_from_start).sleep();
 }
 
 void moveBase(double base_pos) {	
