@@ -295,7 +295,7 @@ void processOrder() {
 						double base_pos = 0; // base of arm
 						
 						if (bin == "bin4") {
-							base_pos = .60 ; // .38;
+							base_pos = .60 ;
 						} else if (bin == "bin5") {
 							base_pos = 1.15;
 						} else if (bin == "bin6") {
