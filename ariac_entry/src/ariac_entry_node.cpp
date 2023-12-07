@@ -24,6 +24,10 @@
 #include "actionlib/client/terminal_state.h"
 #include "control_msgs/FollowJointTrajectoryAction.h"
 
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <cmath>  // for M_PI
+
 std::vector<osrf_gear::Order> orders;
 osrf_gear::LogicalCameraImage::ConstPtr camera_images[10];
 ros::ServiceClient locationClient; 
@@ -176,7 +180,7 @@ geometry_msgs::TransformStamped getTfStamped(std::string frame) {
 	
 	try {	
 		tfStamped = tfBuffer.lookupTransform("arm1_base_link", frame, ros::Time(0.0), ros::Duration(1.0));
-		ROS_DEBUG("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
+		ROS_DEBUG("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());	
 		
 	} catch (tf2::TransformException &ex) {
 		ROS_ERROR("%s", ex.what());
@@ -186,38 +190,25 @@ geometry_msgs::TransformStamped getTfStamped(std::string frame) {
 }
 
 void moveArm(osrf_gear::Model model, std::string sourceFrame) {	
+
+	// Copy pose from the logical camera
 	geometry_msgs::TransformStamped tfStamped = getTfStamped(sourceFrame);
 	
 	geometry_msgs::PoseStamped part_pose; 
 	geometry_msgs::PoseStamped goal_pose;
 
-	// Copy pose from the logical camera
 	part_pose.pose = model.pose;
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
 	
 	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
-	//goal_pose.pose.orientation.w = 0.707;
+	goal_pose.pose.position.x = 0.0;
+	goal_pose.pose.position.y = 0.5;
+	goal_pose.pose.position.z = 0.1;
+	
+	//goal_pose.pose.orientation.w = 0.0;
 	//goal_pose.pose.orientation.x = 0.0;
-	//goal_pose.pose.orientation.y = 0.707;
-	//goal_pose.pose.orientation.z = 0;	
-
-	tf2::doTransform(part_pose, goal_pose, tfStamped);
-	
-	//joint_trajectory.points[1].positions[1] = 2.0;
-	//joint_trajectory.points[2].positions[1] = 2.0;
-	//joint_trajectory.points[3].positions[1] = 2.0;
-	//joint_trajectory.points[4].positions[1] = 2.0;
-	//joint_trajectory.points[5].positions[1] = 2.0;
-	//joint_trajectory.points[6].positions[1] = 2.0;
-	
-	goal_pose.pose.position.x = 0.5;
-	goal_pose.pose.position.y = 0;
-	goal_pose.pose.position.z = 0;
-	
-	goal_pose.pose.orientation.w = 1;
-	goal_pose.pose.orientation.x = 0;
-	goal_pose.pose.orientation.y = 0;
-	goal_pose.pose.orientation.z = 0;	
+	//goal_pose.pose.orientation.y = 0.0;
+	//goal_pose.pose.orientation.z = 1.0;	
 	
 	geometry_msgs::Point position = goal_pose.pose.position;
 	ROS_WARN("Position: x=%f, y=%f, z=%f (relative to arm)", position.x, position.y, position.z);
@@ -236,17 +227,14 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	}
 	
 	trajectory_msgs::JointTrajectory joint_trajectory = setupJointTrajectory();	
-	// joint_trajectory.points.resize(2);
-	// joint_trajectory.points[0].positions.resize(7);
-	// joint_trajectory.points[1].positions.resize(7);
-	
-	// ROS_INFO("%li %li %li %li", joint_trajectory.points.size(), joint_trajectory.points[0].positions.size(), ik_pose.response.joint_solutions.size(), ik_pose.response.joint_solutions[0].joint_angles.size()); 
 	
 	// Enter the joint positions in the correct positions
     for (int indy = 0; indy < 6; indy++) {
       joint_trajectory.points[1].positions[indy+1] = 			 
       		ik_pose.response.joint_solutions[0].joint_angles[indy];
     }
+
+    joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
 
 	callActionServer(joint_trajectory);
 }
@@ -265,7 +253,7 @@ void moveBase(double base_pos) {
     }
     
     joint_trajectory.points[1].positions[0] = base_pos;
-    joint_trajectory.points[1].time_from_start = ros::Duration(5.0);
+    joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
     callActionServer(joint_trajectory);
 }
 
@@ -309,8 +297,8 @@ void processOrder() {
 							base_pos = 1.91;
 						}
 
+						moveBase(base_pos);
 						moveArm(model, sourceFrame);	
-						//moveBase(base_pos);
 
 						break;					
 					}
