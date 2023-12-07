@@ -189,10 +189,10 @@ geometry_msgs::TransformStamped getTfStamped(std::string frame) {
 	return tfStamped;	
 }
 
-void moveArm(osrf_gear::Model model, std::string sourceFrame) {	
+void moveArm(osrf_gear::Model model, std::string source_frame, double z_incr) {	
 
 	// Copy pose from the logical camera
-	geometry_msgs::TransformStamped tfStamped = getTfStamped(sourceFrame);
+	geometry_msgs::TransformStamped tfStamped = getTfStamped(source_frame);
 	
 	geometry_msgs::PoseStamped part_pose; 
 	geometry_msgs::PoseStamped goal_pose;
@@ -201,7 +201,7 @@ void moveArm(osrf_gear::Model model, std::string sourceFrame) {
 	tf2::doTransform(part_pose, goal_pose, tfStamped);
 	
 	// Set the position and orientation
-	goal_pose.pose.position.z += 0.10;
+	goal_pose.pose.position.z += z_incr;
 	
 	// goal_pose.pose.orientation.w = 0.707;
 	// goal_pose.pose.orientation.x = 0.0;
@@ -295,17 +295,21 @@ void processOrder() {
 						double base_pos = 0; // base of arm
 						
 						if (bin == "bin4") {
-							base_pos = .38;
+							base_pos = .60 ; // .38;
 						} else if (bin == "bin5") {
 							base_pos = 1.15;
 						} else if (bin == "bin6") {
 							base_pos = 1.91;
 						}
 						
-						ROS_INFO("Moving base to %s", bin.c_str());
-						moveBase(base_pos);
+						ROS_INFO("Moving base to %s", bin.c_str());			
+						moveBase(base_pos);		
 						
-						moveArm(model, sourceFrame);	
+						double height_adjust = .12;
+
+						moveArm(model, sourceFrame, height_adjust); // move arm
+						moveArm(model, sourceFrame, height_adjust * -1); // lower arm
+						moveArm(model, sourceFrame, height_adjust); // raise arm
 
 						break;					
 					}
